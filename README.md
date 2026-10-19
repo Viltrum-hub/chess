@@ -1,6 +1,6 @@
 # Nocturne Chess Club
 
-Ajedrez contra IA con cuatro dificultades, tablero adaptable y skins clásicas y temáticas.
+Ajedrez contra IA con cuatro dificultades y seis colecciones de skins: Heritage, Monolith, Type Club, Neon District, Orbit y Shogun. Tableros y piezas combinables, diseño adaptable y guardado local.
 
 ## Ejecutar
 

@@ -1,8 +1,9 @@
 import {Chess} from './chess.js';
 const $=s=>document.querySelector(s),game=new Chess(),names={p:'peón',n:'caballo',b:'alfil',r:'torre',q:'dama',k:'rey'},levels=[['Principiante','Explorador','▂'],['Intermedio','Estratega','▂▄'],['Avanzado','Táctico','▂▄▆'],['Experto','Desafío máximo','▂▄▆█']],themes=[['Violeta','#bcb0d1','#514465'],['Nogal','#e8d8bd','#9a7253'],['Océano','#bed5e6','#3a617b'],['Obsidiana','#c2c3c8','#555762'],['Cyber','#739fac','#25384b'],['Sakura','#e4c8cb','#865563'],['Amatista','#a99ac2','#211732'],['Halloween','#b7a087','#29232e']];
 let level=0,human='w',flipped=false,selected=null,legal=[],busy=false,worker=null,request=0,sound=true,pieceStyle='halloween',opponentStyle='amethyst',theme=7;
+let cloud={mode:'loading',user:null,inventory:[],revision:0,signature:null,pending:null,saving:false,error:null},cloudTimer;
 try{let s=JSON.parse(localStorage.getItem('nocturne')||'null');if(s){if(s.pgn)game.loadPgn(s.pgn);level=s.level??0;human=s.human||'w';flipped=human==='b';theme=s.theme??0;pieceStyle=s.pieceStyle||'halloween';opponentStyle=s.opponentStyle||'amethyst';sound=s.sound??true}}catch{}
-function save(){try{localStorage.setItem('nocturne',JSON.stringify({pgn:game.pgn(),level,human,theme,pieceStyle,opponentStyle,sound}))}catch{}}
+function save(){try{localStorage.setItem(cloud.user?'nocturne:'+cloud.user.id:'nocturne',JSON.stringify(snapshot()))}catch{}queueCloudSave();}
 const shapes={p:'<circle cx="30" cy="16" r="7"/><path d="M25 24h10l-2 13 7 9H20l7-9z"/>',r:'<path d="M17 12h7v7h5v-7h5v7h5v-7h5v15l-7 5 2 14H21l2-14-6-5z"/>',n:'<path d="M19 46l3-12 15-11-10 3-7 8-8-6 10-17 13-4-1 7c14 4 15 15 12 32z"/><circle cx="29" cy="19" r="1.6" fill="currentColor"/>',b:'<path d="M30 7c-6 6-12 11-12 17 0 5 4 8 9 8l-4 8-6 6h26l-6-6-4-8c5 0 9-3 9-8 0-6-6-11-12-17z"/><path d="M32 12l-7 12" fill="none"/>',q:'<path d="M17 20l8 8 5-14 6 14 8-8-7 22H23z"/><circle cx="15" cy="16" r="3"/><circle cx="30" cy="10" r="3"/><circle cx="46" cy="16" r="3"/><path d="M22 42h16l4 5H18z"/>',k:'<path d="M30 6v13m-6-8h12" fill="none" stroke-width="4"/><path d="M30 22c-10-9-19 1-10 10l5 7-5 7h20l-5-7 5-7c9-9 0-19-10-10z"/>'};
 const geom={p:'<circle cx="30" cy="19" r="9"/><path d="M25 32h10l7 14H18z"/>',n:'<path d="M17 46V28l15-19 13 10-11 7 9 20z"/><circle cx="34" cy="18" r="2"/>',b:'<path d="M30 7l13 16-13 12-13-12zM25 36h10l8 10H17z"/>',r:'<path d="M17 10h8v8h10v-8h8v18H17zM23 30h14v16H23z"/>',q:'<path d="M15 13l10 10 5-16 5 16 10-10-7 24H22zM22 40h16l5 6H17z"/>',k:'<path d="M30 5v15m-7-8h14" fill="none" stroke-width="4"/><path d="M20 25h20l-5 12 8 9H17l8-9z"/>'};
 const themedShapes={
@@ -54,19 +55,82 @@ document.addEventListener('pointerdown',unlockAudio,{passive:true});
 document.addEventListener('keydown',unlockAudio);
 
 function play(m){let move;try{move=game.move(m)}catch{return}selected=null;legal=[];beep(game.isCheckmate()?'mate':game.isCheck()?'check':move.promotion?'promotion':move.captured?'capture':/[kq]/.test(move.flags)?'castle':'move');render();think()}
-function clickSquare(sq){if(busy||game.isGameOver()||game.turn()!==human)return;let options=legal.filter(m=>m.to===sq);if(selected&&options.length){if(options.some(m=>m.promotion)){promotion(selected,sq);return}play({from:selected,to:sq});return}let p=game.get(sq);selected=p?.color===human?sq:null;legal=selected?game.moves({square:selected,verbose:true}):[];render()}
+function clickSquare(sq){if(cloud.mode==='loading'||busy||game.isGameOver()||game.turn()!==human)return;let options=legal.filter(m=>m.to===sq);if(selected&&options.length){if(options.some(m=>m.promotion)){promotion(selected,sq);return}play({from:selected,to:sq});return}let p=game.get(sq);selected=p?.color===human?sq:null;legal=selected?game.moves({square:selected,verbose:true}):[];render()}
 function cancel(){request++;worker?.terminate();worker=null;busy=false}
 function think(){if(game.isGameOver()||game.turn()===human)return;cancel();busy=true;render();let id=request;worker=new Worker('./engine.js',{type:'module'});worker.onmessage=({data})=>{if(data.id!==request)return;worker.terminate();worker=null;busy=false;if(data.move)play(data.move);else{render();show('No se pudo calcular la jugada','Vuelve a intentar con Nueva partida.')}};worker.onerror=()=>{cancel();render();show('Motor no disponible','Recarga la página para volver a iniciar el motor de ajedrez.')};worker.postMessage({id,pgn:game.pgn(),level})}
 function show(title,html){$('#modalTitle').textContent=title;$('#modalContent').innerHTML=html;$('#closeModal').hidden=false;$('#modal').showModal()}
 function promotion(from,to){show('Corona tu peón','<p>Elige la pieza en la que se convertirá.</p><div class="promotion">'+['q','r','b','n'].map(p=>`<button data-promote="${p}" aria-label="${names[p]}">${piece({type:p,color:human})}</button>`).join('')+'</div>');$('#closeModal').hidden=true;document.querySelectorAll('[data-promote]').forEach(b=>b.onclick=()=>{$('#modal').close();play({from,to,promotion:b.dataset.promote})})}
-function controls(){ $('#levels').innerHTML=levels.map((l,i)=>`<button class="level ${level===i?'active':''}" data-level="${i}" aria-pressed="${level===i}"><span class="bars">${l[2]}</span><span><strong>${l[0]}</strong><small>${l[1]}</small></span><span class="check">${level===i?'✓':''}</span></button>`).join('');document.querySelectorAll('[data-level]').forEach(b=>b.onclick=()=>{level=+b.dataset.level;controls();if(busy)think();render()});$('#themes').innerHTML=themes.map((t,i)=>`<button class="swatch ${i===theme?'active':''}" style="--a:${t[1]};--b:${t[2]}" data-theme="${i}" aria-label="Tablero ${t[0]}" aria-pressed="${i===theme}"></button>`).join('');document.querySelectorAll('[data-theme]').forEach(b=>b.onclick=()=>{theme=+b.dataset.theme;controls();render()});document.documentElement.style.setProperty('--light',themes[theme][1]);document.documentElement.style.setProperty('--dark',themes[theme][2]);$('#themeName').textContent=themes[theme][0];$('#pieces').value=pieceStyle;document.body.dataset.skin=pieceStyle;document.body.dataset.board=String(theme);document.querySelectorAll('[data-skin-id]').forEach(b=>b.classList.toggle('active',b.dataset.skinId===pieceStyle))}
-$('#pieces').onchange=e=>{pieceStyle=e.target.value;controls();render()};$('#side').value=human;$('#new').onclick=()=>{if(game.history().length&&!game.isGameOver()){show('¿Empezar una nueva partida?','<p>La partida actual se reemplazará. Puedes cambiar tu color antes de empezar.</p><button class="primary" id="confirmNew">Empezar nueva partida ↗</button>');$('#confirmNew').onclick=()=>{$('#modal').close();newGame()}}else newGame()};function newGame(){cancel();game.reset();human=$('#side').value;flipped=human==='b';selected=null;legal=[];render();think()}
-$('#undo').onclick=()=>{cancel();game.undo();if(game.turn()!==human&&game.history().length)game.undo();selected=null;legal=[];render();think()};$('#flip').onclick=()=>{flipped=!flipped;render()};$('#sound').onclick=()=>{sound=!sound;$('#sound span').textContent='Sonido: '+(sound?'sí':'no');$('#sound').setAttribute('aria-pressed',String(sound));save();beep()};$('#help').onclick=()=>show('Tu próxima jugada empieza aquí.','<p>Toca una pieza y después una casilla marcada para moverla. Tu objetivo es dar jaque mate al rey rival.</p><p>Incluye enroque, captura al paso y elección de pieza al coronar. Puedes deshacer tu último turno o girar el tablero.</p><p>Los cuatro niveles aumentan la profundidad de búsqueda de la IA; no representan una clasificación Elo. Cambia el estilo cuando quieras. El color elegido se aplica al empezar una nueva partida.</p><p>La partida y tus temas se guardan automáticamente en este navegador.</p>');$('#closeModal').onclick=()=>$('#modal').close();controls();render();think();
+function controls(){ $('#levels').innerHTML=levels.map((l,i)=>`<button class="level ${level===i?'active':''}" data-level="${i}" aria-pressed="${level===i}"><span class="bars">${l[2]}</span><span><strong>${l[0]}</strong><small>${l[1]}</small></span><span class="check">${level===i?'✓':''}</span></button>`).join('');document.querySelectorAll('[data-level]').forEach(b=>b.onclick=()=>{level=+b.dataset.level;controls();if(busy)think();render()});$('#themes').innerHTML=themes.map((t,i)=>`<button class="swatch ${i===theme?'active':''}" style="--a:${t[1]};--b:${t[2]}" data-theme="${i}" aria-label="Tablero ${t[0]}" aria-pressed="${i===theme}"></button>`).join('');document.querySelectorAll('[data-theme]').forEach(b=>b.onclick=()=>{theme=+b.dataset.theme;controls();render()});document.documentElement.style.setProperty('--light',themes[theme][1]);document.documentElement.style.setProperty('--dark',themes[theme][2]);$('#themeName').textContent=themes[theme][0];$('#pieces').value=pieceStyle;$('#pieces').querySelectorAll('option').forEach(o=>o.disabled=cloud.mode==='ready'&&!cloud.inventory.includes(o.value));document.body.dataset.skin=pieceStyle;document.body.dataset.board=String(theme);document.querySelectorAll('[data-skin-id]').forEach(b=>b.classList.toggle('active',b.dataset.skinId===pieceStyle))}
+$('#pieces').onchange=e=>{pieceStyle=e.target.value;controls();render()};$('#side').value=human;$('#new').onclick=()=>{if(game.history().length&&!game.isGameOver()){show('¿Empezar una nueva partida?','<p>La partida actual se reemplazará. Puedes cambiar tu color antes de empezar.</p><button class="primary" id="confirmNew">Empezar nueva partida ↗</button>');$('#confirmNew').onclick=()=>{$('#modal').close();newGame()}}else newGame()};function newGame(){if(cloud.mode==='loading')return;cancel();game.reset();human=$('#side').value;flipped=human==='b';selected=null;legal=[];render();think()}
+$('#undo').onclick=()=>{cancel();game.undo();if(game.turn()!==human&&game.history().length)game.undo();selected=null;legal=[];render();think()};$('#flip').onclick=()=>{flipped=!flipped;render()};$('#sound').onclick=()=>{sound=!sound;$('#sound span').textContent='Sonido: '+(sound?'sí':'no');$('#sound').setAttribute('aria-pressed',String(sound));save();beep()};$('#help').onclick=()=>show('Tu próxima jugada empieza aquí.','<p>Toca una pieza y después una casilla marcada para moverla. Tu objetivo es dar jaque mate al rey rival.</p><p>Incluye enroque, captura al paso y elección de pieza al coronar. Puedes deshacer tu último turno o girar el tablero.</p><p>Los cuatro niveles aumentan la profundidad de búsqueda de la IA; no representan una clasificación Elo. Cambia el estilo cuando quieras. El color elegido se aplica al empezar una nueva partida.</p><p>La partida y tus temas se guardan automáticamente en este navegador.</p>');$('#closeModal').onclick=()=>$('#modal').close();controls();render();
 
-function skinGallery(){let current=pieceStyle;show('Tu colección. Tu identidad.',`<p class="gallery-sub">Ocho colecciones. Piezas y tablero a juego. Tu skin se aplica solo a tu ejército.</p><div class="skin-grid">${collections.map(c=>{let preview=piece({type:'n',color:human},c.id)+piece({type:'k',color:human},c.id)+piece({type:'p',color:human},c.id);return `<button class="skin-card ${c.id==='halloween'?'seasonal':''} ${current===c.id?'active':''}" data-skin-id="${c.id}" style="--preview-light:${themes[c.theme][1]};--preview-dark:${themes[c.theme][2]}"><span class="skin-preview">${preview}</span><span class="skin-info"><small>${c.tag}</small><strong>${c.name}</strong><span>${c.desc}</span><b>${current===c.id?'✓ EQUIPADA EN TU LADO':'EQUIPAR EN TU LADO ↗'}</b></span></button>`}).join('')}</div><p class="gallery-foot">Tu rival conserva su propia skin. La selección se guarda en este navegador; la sincronización por cuenta aún no está conectada.</p>`);$('#modal').classList.add('gallery');document.querySelectorAll('[data-skin-id]').forEach(b=>b.onclick=()=>{let c=collections.find(c=>c.id===b.dataset.skinId);pieceStyle=c.id;theme=c.theme;controls();render();$('#modal').close()})}
+function skinGallery(){let current=pieceStyle;show('Tu colección. Tu identidad.',`<p class="gallery-sub">Ocho colecciones. Piezas y tablero a juego. Tu skin se aplica solo a tu ejército.</p><div class="skin-grid">${collections.map(c=>{let preview=piece({type:'n',color:human},c.id)+piece({type:'k',color:human},c.id)+piece({type:'p',color:human},c.id);return `<button class="skin-card ${c.id==='halloween'?'seasonal':''} ${current===c.id?'active':''}" data-skin-id="${c.id}" ${cloud.mode==='ready'&&!cloud.inventory.includes(c.id)?'disabled':''} style="--preview-light:${themes[c.theme][1]};--preview-dark:${themes[c.theme][2]}"><span class="skin-preview">${preview}</span><span class="skin-info"><small>${c.tag}</small><strong>${c.name}</strong><span>${c.desc}</span><b>${cloud.mode==='ready'&&!cloud.inventory.includes(c.id)?'BLOQUEADA EN TU CUENTA':current===c.id?'✓ EQUIPADA EN TU LADO':'EQUIPAR EN TU LADO ↗'}</b></span></button>`}).join('')}</div><p class="gallery-foot">Tu ejército tiene su propia skin. La colección y tu selección se guardan en tu cuenta.</p>`);$('#modal').classList.add('gallery');document.querySelectorAll('[data-skin-id]').forEach(b=>b.onclick=()=>{let c=collections.find(c=>c.id===b.dataset.skinId);pieceStyle=c.id;theme=c.theme;controls();render();$('#modal').close()})}
 for(let id of ['openSkins','heroSkins','roomSkins','panelSkins','seasonSkins'])$('#'+id).onclick=skinGallery;
 $('#modal').addEventListener('close',()=>$('#modal').classList.remove('gallery'));
 
 $('#sound span').textContent='Sonido: '+(sound?'sí':'no');$('#sound').setAttribute('aria-pressed',String(sound));
 
-$('#collectionStatus').onclick=()=>show('Tu colección personal','<p>Las ocho colecciones están disponibles en esta versión, incluyendo Amethyst Royale y la edición Halloween.</p><p>Tu elección se aplica a tus piezas y al tablero. La IA conserva su propio ejército.</p><p>Estado actual: <strong>guardado en este navegador</strong>. El inventario y las preferencias por cuenta están preparados, pero la base de datos aún no está conectada.</p>');
+$('#collectionStatus').onclick=accountModal;
+function snapshot(){return {pgn:game.pgn(),level,human,theme,pieceStyle,opponentStyle,sound};}
+function updateCloudUI(){
+ const note=$('#collectionStatus'),footer=$('#saveStatus');
+ const label=cloud.mode==='loading'?'Conectando tu colección…':cloud.mode==='ready'?(cloud.saving?'Guardando en tu cuenta…':'Colección sincronizada · '+cloud.inventory.length+'/8 skins'):cloud.mode==='conflict'?'Cambios en otro dispositivo · revisar':cloud.mode==='signin'?'Inicia sesión para sincronizar':'Sin conexión · guardado local';
+ if(note)note.textContent=label+' ↗';if(footer)footer.textContent=label;
+ $('#accountButton').textContent=cloud.user?(cloud.user.isOwner?'Mi cuenta · Creador':'Mi cuenta'):'Mi cuenta';
+}
+function queueCloudSave(){
+ if(cloud.mode!=='ready')return;
+ const json=JSON.stringify(snapshot());if(json===cloud.signature)return;
+ cloud.pending=json;clearTimeout(cloudTimer);cloudTimer=setTimeout(flushCloudSave,650);updateCloudUI();
+}
+async function flushCloudSave(){
+ if(cloud.saving||cloud.mode!=='ready'||!cloud.pending)return;
+ cloud.saving=true;updateCloudUI();
+ try{while(cloud.pending&&cloud.mode==='ready'){
+   const json=cloud.pending;cloud.pending=null;
+   const response=await fetch('/api/profile',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify({state:JSON.parse(json),revision:cloud.revision})});
+   const data=await response.json();
+   if(!response.ok){cloud.pending=cloud.pending||json;cloud.mode=response.status===409?'conflict':response.status===401?'signin':'offline';throw new Error(data.error||'No se pudo guardar.');}
+   cloud.revision=data.revision;cloud.signature=json;cloud.updatedAt=data.updatedAt;
+ }}catch(error){cloud.error=error.message;if(cloud.mode==='ready')cloud.mode='offline';}
+ finally{cloud.saving=false;updateCloudUI();}
+}
+async function syncAccount(){
+ cancel();cloud.mode='loading';updateCloudUI();
+ try{
+  const response=await fetch('/api/profile',{credentials:'same-origin',cache:'no-store'});
+  const data=await response.json();if(!response.ok){cloud.mode=response.status===401?'signin':'offline';throw new Error(data.error||'No se pudo abrir tu colección.');}
+  cloud.user=data.user;cloud.inventory=data.inventory;cloud.revision=data.revision;cloud.updatedAt=data.updatedAt;
+  let state=data.preferences;
+  if(!state){try{state=JSON.parse(localStorage.getItem('nocturne:'+data.user.id)||'null')}catch{}}
+  if(!state&&data.user.isOwner)state=snapshot();
+  if(!state)state={pgn:'',level:0,human:'w',theme:1,pieceStyle:'classic',opponentStyle:'amethyst',sound:true};
+  game.reset();if(state.pgn)game.loadPgn(state.pgn);
+  level=state.level;human=state.human;theme=state.theme;pieceStyle=cloud.inventory.includes(state.pieceStyle)?state.pieceStyle:'classic';opponentStyle='amethyst';sound=state.sound;
+  flipped=human==='b';selected=null;legal=[];$('#side').value=human;
+  cloud.signature=data.preferences?JSON.stringify(snapshot()):null;cloud.mode='ready';cloud.error=null;
+  controls();render();$('#sound span').textContent='Sonido: '+(sound?'sí':'no');$('#sound').setAttribute('aria-pressed',String(sound));
+ }catch(error){cloud.error=error.message;if(cloud.mode==='loading')cloud.mode='offline';}
+ finally{updateCloudUI();think();}
+}
+function escaped(value){return String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
+function accountModal(){
+ let body;
+ if(cloud.user){
+  body=`<div class="account-summary"><span class="account-avatar">♛</span><div><strong>${escaped(cloud.user.name)}</strong><small>${cloud.user.isOwner?'CUENTA CREADORA · COLECCIÓN COMPLETA':'MIEMBRO DEL CLUB'}</small></div></div><p><strong>${cloud.inventory.length} de 8 skins</strong> en tu inventario personal.</p><div class="owned-list">${collections.map(c=>`<span class="${cloud.inventory.includes(c.id)?'owned':'locked'}">${cloud.inventory.includes(c.id)?'✓':'◇'} ${escaped(c.name)}</span>`).join('')}</div><p>Se guardan tu partida, tu skin, el tablero, la dificultad y el sonido. Puedes retomarlos al entrar con esta cuenta desde otro dispositivo.</p>`;
+  if(cloud.mode==='ready')body+='<p class="sync-success">● Tu colección está conectada y protegida.</p>';
+  else body+=`<p role="status">${escaped(cloud.error||'Conectando…')}</p><button class="primary" id="retryCloud">${cloud.mode==='conflict'?'Cargar cambios del otro dispositivo':'Reintentar sincronización'}</button>`;
+  body+='<a class="account-signout" href="/signout-with-chatgpt?return_to=%2F" target="_top">Cerrar sesión ↗</a>';
+ }else{
+  body='<p>Accede a tu colección personal para guardar tus skins y continuar tu partida desde cualquier dispositivo.</p>';
+  if(cloud.mode==='signin')body+='<a class="primary" href="/signin-with-chatgpt?return_to=%2F" target="_top">Entrar con mi cuenta ↗</a>';
+  else body+='<p role="status">'+escaped(cloud.error||'Conectando tu cuenta…')+'</p><button class="primary" id="retryCloud">Volver a conectar</button>';
+ }
+ show('Mi colección personal',body);
+ const retry=$('#retryCloud');if(retry)retry.onclick=()=>{$('#modal').close();if(cloud.user&&cloud.pending&&cloud.mode!=='conflict'){cloud.mode='ready';flushCloudSave()}else syncAccount()};
+ const signout=$('.account-signout');if(signout)signout.onclick=()=>{clearTimeout(cloudTimer);localStorage.removeItem('nocturne');localStorage.removeItem('nocturne:'+cloud.user.id)};
+}
+$('#accountButton').onclick=accountModal;
+window.addEventListener('online',()=>{if(cloud.user&&cloud.mode==='offline'&&cloud.pending){cloud.mode='ready';flushCloudSave()}});
+
+syncAccount();

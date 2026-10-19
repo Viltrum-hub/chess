@@ -1,17 +1,21 @@
 # Nocturne Chess Club
 
-Ajedrez contra IA con cuatro dificultades y ocho colecciones: Heritage, Monolith, Type Club, Neon District, Orbit, Shogun, Amethyst Royale y Midnight Coven (Halloween).
+Ajedrez contra IA con cuatro niveles y ocho colecciones de skins, incluyendo Amethyst Royale y Halloween: Midnight Coven.
 
-## Ejecutar
+## Cuenta e inventario
 
-Sirve la carpeta con un servidor HTTP, por ejemplo `python -m http.server 8080`, y abre `http://localhost:8080`.
+La versión con base de datos está en https://nocturne-chess.viltrum2026.chatgpt.site. Usa el inicio de sesión del alojamiento y una base D1 exclusiva. Guarda inventario, skin equipada, tablero, partida, nivel y sonido entre dispositivos. La cuenta creadora tiene las ocho colecciones; otras cuentas reciben la clásica y solo pueden equipar skins asignadas.
 
-La skin se aplica a tu ejército y el rival conserva su propio diseño. Tablero combinable, sonido por evento, enroque, captura al paso y coronación. La partida y los ajustes se guardan en el navegador.
+GitHub Pages dirige a la versión con servidor para que también funcione el guardado por cuenta. Los archivos visuales están en `public/` y la lógica del servidor en `app/api/` y `lib/`.
 
-## Inventario por cuenta
+## Desarrollo
 
-El esquema de Supabase está preparado en `database/schema.sql`. **Todavía no está conectado**: Supabase bloqueó la creación del proyecto por el límite de dos proyectos gratuitos. Hasta conectar cuentas e inventario, la web permite probar todas las skins con guardado local. Consulta `database/README.md`.
+Instalar con el gestor indicado por package.json; ejecutar `npm run dev`. El alojamiento configura DB y CHESS_OWNER_EMAIL. Nunca escribir el valor privado de esa variable en el repositorio. Ver `database/README.md`.
 
-## Motor y recursos
+## Verificación
 
-Reglas: chess.js (licencia BSD-2-Clause incluida). Rival: búsqueda negamax con poda alfa-beta en un Web Worker. Las colecciones Amethyst Royale y Midnight Coven usan atlas de piezas transparentes renderizadas en 3D.
+`node tests/inventory.mjs` comprueba inventarios, permisos, restauración y conflictos. `npm run build` compila el sitio.
+
+## Motor
+
+chess.js para reglas (licencia incluida); negamax con poda alfa-beta en un Web Worker para la IA.

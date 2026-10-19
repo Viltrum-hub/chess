@@ -6,7 +6,7 @@ Ajedrez contra IA con cuatro niveles y ocho colecciones de skins, incluyendo Ame
 
 La versión con base de datos está en https://nocturne-chess.viltrum2026.chatgpt.site. Usa el inicio de sesión del alojamiento y una base D1 exclusiva. Guarda inventario, skin equipada, tablero, partida, nivel y sonido entre dispositivos. La cuenta creadora tiene las ocho colecciones; otras cuentas reciben la clásica y solo pueden equipar skins asignadas.
 
-GitHub Pages dirige a la versión con servidor para que también funcione el guardado por cuenta. Los archivos visuales están en `public/` y la lógica del servidor en `app/api/` y `lib/`.
+GitHub Pages ejecuta el juego directamente en modo local, sin redirecciones. La partida y personalización se guardan en el navegador. La sincronización por cuenta usa la versión con servidor; no se simula una conexión de base de datos en GitHub Pages. Los archivos visuales están en `public/` y la lógica del servidor en `app/api/` y `lib/`.
 
 ## Desarrollo
 

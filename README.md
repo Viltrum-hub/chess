@@ -19,3 +19,9 @@ Instalar con el gestor indicado por package.json; ejecutar `npm run dev`. El alo
 ## Motor
 
 chess.js para reglas (licencia incluida); negamax con poda alfa-beta en un Web Worker para la IA.
+
+## Interfaz de juego
+
+Menú lateral, tablero central y panel derecho con configuración e historial. Las piezas exclusivas tienen proporciones distintas y recortes individuales; el control Aa activa u oculta sus iniciales y la guía identifica los seis tipos.
+
+![Interfaz de Nocturne](docs/nocturne-club-preview.jpg)
